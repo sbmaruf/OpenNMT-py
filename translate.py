@@ -19,7 +19,11 @@ def main(opt):
     translator = make_translator(opt, report_score=True, logger=logger)
     translator.translate(opt.src_dir, opt.src, opt.tgt,
                          opt.batch_size, opt.attn_debug)
-
+    print(translator.output)
+    print(opt.output)
+    with open(opt.output, "r") as f:
+        for line in f:
+            print(line)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
