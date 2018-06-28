@@ -31,11 +31,18 @@ def postprocess_opts(parser):
                        required=True,
                        help="The address of the source file that will be translated by model."
                             "Each line contains a single example.")
+    group.add_argument("-tgt",
+                       type=str,
+                       required=True,
+                       help="The address of the gold translated sentence files")
     group.add_argument("-infer_param",
                        type=str,
                        default="",
                        help="Additional param while running."
-                            "example: python translate.py {infer_param}")
+                            "Run will be like `python translate.py {infer_param}`. "
+                            "Example: `-verbose -beam_size 5` "
+                            "see the link for the params, "
+                            "http://opennmt.net/OpenNMT-py/options/translate.html")
 
     group = parser.add_argument_group('Dataset')
     group.add_argument("-dir",
@@ -62,13 +69,14 @@ def postprocess_opts(parser):
     group.add_argument("-verbose",
                        action='store_true',
                        help="Print the additional information")
-    mutual_param = group.add_mutually_exclusive_group(required=True)
-    mutual_param.add_argument("-wait_for_checkpoint",
-                       action='store_true',
-                       help="Wait for checkpoint to the generate.")
-    mutual_param.add_argument("-process_id",
-                       action="",
-                       help="Process id that the file will monitor.")
+    # mutual_param = group.add_mutually_exclusive_group(required=True)
+    # mutual_param.add_argument("-wait_for_checkpoint",
+    #                            action='store_true',
+    #                            help="Wait for checkpoint to the generate.")
+    # mutual_param.add_argument("-process_id",
+    #                            type=int,
+    #                            default=0,
+    #                            help="Process id that the file will monitor.")
 
     group = parser.add_argument_group('Tokenizer Post-processing')
     group.add_argument("-blue_score_script",
@@ -108,6 +116,10 @@ def assert_address(opt):
         assert os.path.exists(opt.infer_script)
         assert os.path.exists(opt.src)
     except AssertionError as e:
+        print("opt.dir :", opt.dir)
+        print("opt.blue_score_script :", opt.blue_score_script)
+        print("opt.infer_script :", opt.infer_script)
+        print("opt.src :", opt.src)
         print(e)
         raise
     return 0
@@ -132,6 +144,19 @@ def assert_source(opt):
     if opt.verbose:
         print("Total number of example in the source file: {0}".format(cnt))
     return 0
+
+
+def calc_us_in_name(name):
+    """
+    calculate how many underscore is in name.
+    :param name: a string.
+    :return: a number
+    """
+    cnt = 0
+    for ch in name:
+        if ch == '_':
+            cnt += 1
+    return cnt
 
 
 class Checkpoints:
@@ -162,7 +187,7 @@ class Checkpoints:
         return epoch
 
 
-def valid_model_name(name, opt):
+def valid_model_name(name, opt, step=0):
     """
     chcek if a sting is valid checkpoint name.
     naming pattern: $NAME_acc_XX.YY_ppl_XX.YY_eZZ.pt
@@ -171,40 +196,41 @@ def valid_model_name(name, opt):
     :return: return True if the name if valid else False.
     """
     parts = name.strip().split('_')
-    if len(parts) != 6:
+    if len(parts) != (6+step):
         return False
-    if parts[0] != opt.name:
+    tmp = parts[0:0+step+1]
+    _name = ''
+    for i in tmp:
+        _name += i + '_'
+    _name = _name[0:-1]
+    if _name != opt.name:
         return False
-    if parts[1] != 'acc':
-        return False
-    if type(parts[2]) is not float:
-        return False
-    if parts[1] != 'acc':
+    if parts[1+step] != 'acc':
         return False
     try:
-        if type(float(parts[2])) is not float:
+        if type(float(parts[2+step])) is not float:
+            return False
+    except ValueError as e:
+        if opt.verbose:
+            print("{0} is not a valid model address.\nException details: {1}".
+                  format(name, e))
+        return False
+    if parts[3+step] != 'ppl':
+        return False
+    try:
+        if type(float(parts[4+step])) is not float:
             return False
     except Exception as e:
         if opt.verbose:
             print("{0} is not a valid model address.\nException details: {1}".
                   format(name, e))
         return False
-    if parts[3] != 'ppl':
+    if parts[5+step][-3:] != '.pt':
+        return False
+    if parts[5+step][0:1] != 'e':
         return False
     try:
-        if type(float(parts[4])) is not float:
-            return False
-    except Exception as e:
-        if opt.verbose:
-            print("{0} is not a valid model address.\nException details: {1}".
-                  format(name, e))
-        return False
-    if parts[5][-3:] != '.pt':
-        return False
-    if parts[5][0:1] != 'e':
-        return False
-    try:
-        if type(int(parts[5][1:-3])) is not int:
+        if type(int(parts[5+step][1:-3])) is not int:
             return False
     except Exception as e:
         if opt.verbose:
@@ -226,15 +252,16 @@ def retrieve_model_list(opt):
     valid_address = []
     for address in files:
         name = os.path.basename(address)
-        if valid_model_name(name, opt):
+        step = calc_us_in_name(name) - 5
+        if valid_model_name(name, opt, step=step):
             lst = name.strip().split('_')
             valid_address.append(
                 Checkpoints(
-                    address,
-                    str(lst[0]),
-                    float(lst[2]),
-                    float(lst[4]),
-                    Checkpoints.str2epoch(lst[5])
+                    os.path.join(opt.dir, address),
+                    str(lst[0+step]),
+                    float(lst[2+step]),
+                    float(lst[4+step]),
+                    Checkpoints.str2epoch(lst[5+step])
                 )
             )
     try:
@@ -265,7 +292,7 @@ def select_checkpoint(checkpoint_list, opt):
     return ret
 
 
-def create_address(address):
+def create_address(address, opt):
     """
     given a checkpoint address, it creates a new folder named pred
     (if is not there) into the checkpoint folder and creates the
@@ -278,7 +305,9 @@ def create_address(address):
     _dir = os.path.dirname(address)
     file_name = os.path.basename(address)
     folder_name = os.path.join(_dir, "pred")
-    os.makedir(folder_name, exist_ok=True)
+    if opt.verbose:
+        print("folder created to save prediction file: {0}".format(folder_name))
+    os.makedirs(folder_name, exist_ok=True)
     pred_file_address = os.path.join(folder_name, file_name)
     pred_file_address += ".pred"
     return pred_file_address
@@ -296,7 +325,7 @@ def main():
     checkpoint_list = retrieve_model_list(opt)
     checkpoint_list = select_checkpoint(checkpoint_list, opt)
     for checkpoint in checkpoint_list:
-        output_address = create_address(checkpoint.address)
+        output_address = create_address(checkpoint.address, opt)
         command = "python {0} -model {1} -src {2} -output {3} {4}".\
             format(opt.infer_script,
                    checkpoint.address,
@@ -306,10 +335,11 @@ def main():
         if opt.verbose:
             print("Running :", command)
         res = subprocess.check_output(command, shell=True).decode("utf-8")
-        msg = ">> " + res.strip()
-        print(msg)
+        # msg = ">> " + res.strip()
+        # cat $OUT / test / test.out.bpe | sed - E 's/(@@ )|(@@ ?$)//g' > $OUT / test / test.out
+        command = "cat {0} | sed -r 's/(@@ )|(@@ ?$)//g' > {1}".format(output_address, output_address+".bpe")
         exit(1)
 
 
-if __name__ == "__main__()":
+if __name__ == "__main__":
     main()

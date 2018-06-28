@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # Author : Thamme Gowda
 # Created : Nov 06, 2017
-#
-# Running on local server 0
 
 
 
@@ -13,7 +11,7 @@ source ~/.bashrc
 
 ONMT="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
 # update these variables
-NAME="luong.dot_with_bpe"
+NAME="transformer_sec"
 OUT="onmt-runs/$NAME"
 
 DATA="../../dataset-gen/all_dataset/alt_amara_GNOME_KDE4_OpenSubtitles2016_OpenSubtitles2018_Ubuntu"
@@ -25,7 +23,7 @@ TEST_SRC=$DATA/test.en-ms.tok.en
 TEST_TGT=$DATA/test.en-ms.tok.ms
 
 BPE="" # default
-BPE="src+tgt" # src, tgt, src+tgt
+#BPE="src+tgt" # src, tgt, src+tgt
 
 # applicable only when BPE="src" or "src+tgt"
 BPE_SRC_OPS=50000
@@ -100,11 +98,6 @@ else
     cp $TEST_TGT $OUT/data/test.tgt
 fi
 
-
-#: <<EOF
-# change according to your need
-
-
 echo "Step 1b: Preprocess"
 python $ONMT/preprocess.py \
     -train_src $OUT/data/train.src \
@@ -114,33 +107,45 @@ python $ONMT/preprocess.py \
     -save_data $OUT/data/processed
 
 
+#: <<EOF
+# change according to your need
 echo "Step 2: Train"
-src_word_vec_size=512
-tgt_word_vec_size=512
-encoder_type="brnn"
-decoder_type="rnn"
-rnn_size=1024
-global_attention="dot"
 
 GPUARG="" # default
-GPUARG="0" # mention with which number of gpu you want to run the code
-CMD="nohup python -u $ONMT/train.py \
-        -data $OUT/data/processed \
-        -save_model $OUT/models/$NAME \
-        -gpuid $GPUARG \
-        -src_word_vec_size ${src_word_vec_size} \
-        -tgt_word_vec_size ${tgt_word_vec_size} \
-        -encoder_type ${encoder_type} \
-        -decoder_type ${decoder_type} \
-        -rnn_size ${rnn_size} \
-        -global_attention ${global_attention} \
-        -epochs 100  &> $OUT/run.log &"
+GPUARG="0"
+GPU_OPTS=""
+
+CMD="nohup python -u train.py -data $OUT/data/processed \
+                                -save_model /tmp/extra \
+                                -gpuid 2 \
+                                -layers 6 \
+                                -rnn_size 512 \
+                                -word_vec_size 512   \
+                                -encoder_type transformer \
+                                -decoder_type transformer -position_encoding \
+                                -epochs 100  \
+                                -max_generator_batches 32 -dropout 0.1 \
+                                -batch_size 4096 \
+                                -batch_type tokens \
+                                -normalization tokens \
+                                -accum_count 4 \
+                                -optim adam \
+                                -adam_beta2 0.998 \
+                                -decay_method noam \
+                                -warmup_steps 8000 \
+                                -learning_rate 2 \
+                                -max_grad_norm 0 \
+                                -param_init 0 \
+                                -param_init_glorot \
+                                -label_smoothing 0.1 &> $OUT/run.log &"
+
 
 echo "Training command :: $CMD"
 eval "$CMD"
 
 CMD="python retrieve_result.py -infer_script ${ONMT}/translate.py \
                                -src $TEST_SRC \
+                               -tgt $TEST_TGT \
                                -infer_param '-verbose -replace_unk' \
                                -dir ${ONMT}/$OUT/models/ \
                                -name $NAME \
@@ -148,7 +153,22 @@ CMD="python retrieve_result.py -infer_script ${ONMT}/translate.py \
                                -blue_score_script ${ONMT}/tools/multi-bleu-detok.perl \
                                -bpe_process"
 
-
+##EOF
+#
+## select a model with high accuracy and low perplexity
+## TODO: currently using linear scale, maybe not be the best
+#model=`ls $OUT/models/*.pt| awk -F '_' 'BEGIN{maxv=-1000000} {score=$(NF-3)-$(NF-1); if (score > maxv) {maxv=score; max=$0}}  END{ print max}'`
+#echo "Chosen Model = $model"
+#if [[ -z "$model" ]]; then
+#    echo "Model not found. Looked in $OUT/models/"
+#    exit 1
+#fi
+#
+#GPU_OPTS=""
+#if [ ! -z $GPUARG ]; then
+#    GPU_OPTS="-gpu $GPUARG"
+#fi
+#
 #echo "Step 3a: Translate Test"
 #python $ONMT/translate.py -model $model \
 #    -src $OUT/data/test.src \

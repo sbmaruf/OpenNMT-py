@@ -4,19 +4,18 @@
 #
 # Running on local server 0
 
-
+ONMT="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
 
 #======= EXPERIMENT SETUP ======
 # Activate python environment if needed
 source ~/.bashrc
 # source activate py3
 
-ONMT="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
 # update these variables
-NAME="luong.dot_with_bpe"
+NAME="luong.dot"
 OUT="onmt-runs/$NAME"
 
-DATA="../../dataset-gen/all_dataset/alt_amara_GNOME_KDE4_OpenSubtitles2016_OpenSubtitles2018_Ubuntu"
+DATA="../dataset-gen/all_dataset/alt_amara_GNOME_KDE4_OpenSubtitles2016_OpenSubtitles2018_Ubuntu"
 TRAIN_SRC=$DATA/train.en-ms.tok.en
 TRAIN_TGT=$DATA/train.en-ms.tok.ms
 VALID_SRC=$DATA/dev.en-ms.tok.en
@@ -25,7 +24,7 @@ TEST_SRC=$DATA/test.en-ms.tok.en
 TEST_TGT=$DATA/test.en-ms.tok.ms
 
 BPE="" # default
-BPE="src+tgt" # src, tgt, src+tgt
+# BPE="src+tgt" # src, tgt, src+tgt
 
 # applicable only when BPE="src" or "src+tgt"
 BPE_SRC_OPS=50000
@@ -139,16 +138,25 @@ CMD="nohup python -u $ONMT/train.py \
 echo "Training command :: $CMD"
 eval "$CMD"
 
-CMD="python retrieve_result.py -infer_script ${ONMT}/translate.py \
-                               -src $TEST_SRC \
-                               -infer_param '-verbose -replace_unk' \
-                               -dir ${ONMT}/$OUT/models/ \
-                               -name $NAME \
-                               -select_max \
-                               -blue_score_script ${ONMT}/tools/multi-bleu-detok.perl \
-                               -bpe_process"
 
 
+
+##EOF
+#
+## select a model with high accuracy and low perplexity
+## TODO: currently using linear scale, maybe not be the best
+#model=`ls $OUT/models/*.pt| awk -F '_' 'BEGIN{maxv=-1000000} {score=$(NF-3)-$(NF-1); if (score > maxv) {maxv=score; max=$0}}  END{ print max}'`
+#echo "Chosen Model = $model"
+#if [[ -z "$model" ]]; then
+#    echo "Model not found. Looked in $OUT/models/"
+#    exit 1
+#fi
+#
+#GPU_OPTS=""
+#if [ ! -z $GPUARG ]; then
+#    GPU_OPTS="-gpu $GPUARG"
+#fi
+#
 #echo "Step 3a: Translate Test"
 #python $ONMT/translate.py -model $model \
 #    -src $OUT/data/test.src \

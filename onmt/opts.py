@@ -132,13 +132,16 @@ def preprocess_opts(parser):
                        help="Path to the validation source data")
     group.add_argument('-valid_tgt', required=True,
                        help="Path to the validation target data")
-
+    group.add_argument('-test_src', required=False,
+                       help="Path to the test source data. "
+                            "For evaluation test score while running training.")
+    group.add_argument('-test_tgt', required=False,
+                       help="Path to the test target data. "
+                            "For evaluation test score while running training.")
     group.add_argument('-src_dir', default="",
                        help="Source directory for image or audio files.")
-
     group.add_argument('-save_data', required=True,
                        help="Output file for the prepared data")
-
     group.add_argument('-max_shard_size', type=int, default=0,
                        help="""For text corpus of large volume, it will
                        be divided into shards of this size to preprocess.

@@ -289,6 +289,16 @@ def train_model(model, fields, optim, data_type, model_opt):
         if epoch >= opt.start_checkpoint_at:
             trainer.drop_checkpoint(model_opt, epoch, fields, valid_stats)
 
+        # 6. Print the score after each epoch if test dataset is given.
+        # try:
+        #     assert os.path.exists(model_opt.test_src)
+        #     assert os.path.exists(model_opt.test_tgt)
+        #
+        # except AssertionError:
+        #     print("No proper test set is given to "
+        #           "translate and calculate bleu the score.")
+
+
 
 def check_save_model_path():
     save_model_path = os.path.abspath(opt.save_model)
