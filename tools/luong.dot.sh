@@ -4,33 +4,35 @@
 #
 # Running on local server 0
 
-ONMT="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
 
 #======= EXPERIMENT SETUP ======
 # Activate python environment if needed
-source ~/.bashrc
+#source ~/.bashrc
 # source activate py3
-
+set -e
+ONMT="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
 # update these variables
-NAME="luong.dot"
-OUT="onmt-runs/$NAME"
-
-DATA="../dataset-gen/all_dataset/alt_amara_GNOME_KDE4_OpenSubtitles2016_OpenSubtitles2018_Ubuntu"
-TRAIN_SRC=$DATA/train.en-ms.tok.en
-TRAIN_TGT=$DATA/train.en-ms.tok.ms
-VALID_SRC=$DATA/dev.en-ms.tok.en
-VALID_TGT=$DATA/dev.en-ms.tok.ms
-TEST_SRC=$DATA/test.en-ms.tok.en
-TEST_TGT=$DATA/test.en-ms.tok.ms
-
-BPE="" # default
-# BPE="src+tgt" # src, tgt, src+tgt
-
-# applicable only when BPE="src" or "src+tgt"
-BPE_SRC_OPS=50000
-
-# applicable only when BPE="tgt" or "src+tgt"
-BPE_TGT_OPS=50000
+LANG1="ms"
+LANG2="en"
+NAME="luong.dot.$LANG1-$LANG2"
+OUT="$ONMT/onmt-runs/$NAME"
+DATA="../../dataset-gen/all_dataset/alt_amara_GNOME_KDE4_OpenSubtitles2016_OpenSubtitles2018_Ubuntu"
+train_src="train.en-ms.tok.clean.$LANG1"
+train_tgt="train.en-ms.tok.clean.$LANG2"
+dev_src="dev.en-ms.tok.$LANG1"
+dev_tgt="dev.en-ms.tok.$LANG2"
+test_src="test.en-ms.tok.$LANG1"
+test_tgt="test.en-ms.tok.$LANG2"
+TRAIN_SRC="$DATA/$train_src"
+TRAIN_TGT="$DATA/$train_tgt"
+VALID_SRC="$DATA/$dev_src"
+VALID_TGT="$DATA/$dev_tgt"
+TEST_SRC="$DATA/$test_src"
+TEST_TGT="$DATA/$test_tgt"
+VOCAB="" # make it empty if you want to create vocab by Open-NMT-py
+VOCAB_TAG=" -src_vocab_size 60000 -tgt_vocab_size 60000 "
+GPUARG="" # default
+GPUARG="1"
 
 
 #====== EXPERIMENT BEGIN ======
@@ -68,37 +70,12 @@ echo "Output dir = $OUT"
 
 
 echo "Step 1a: Preprocess inputs"
-if [[ "$BPE" == *"src"* ]]; then
-    echo "BPE on source"
-    # Here we could use more  monolingual data
-    $ONMT/tools/learn_bpe.py -s $BPE_SRC_OPS < $TRAIN_SRC > $OUT/data/bpe-codes.src
-
-    $ONMT/tools/apply_bpe.py -c $OUT/data/bpe-codes.src <  $TRAIN_SRC > $OUT/data/train.src
-    $ONMT/tools/apply_bpe.py -c $OUT/data/bpe-codes.src <  $VALID_SRC > $OUT/data/valid.src
-    $ONMT/tools/apply_bpe.py -c $OUT/data/bpe-codes.src <  $TEST_SRC > $OUT/data/test.src
-else
-    cp $TRAIN_SRC $OUT/data/train.src
-    cp $VALID_SRC $OUT/data/valid.src
-    cp $TEST_SRC $OUT/data/test.src
-fi
-
-
-if [[ "$BPE" == *"tgt"* ]]; then
-    echo "BPE on target"
-    # Here we could use more  monolingual data
-    $ONMT/tools/learn_bpe.py -s $BPE_SRC_OPS < $TRAIN_TGT > $OUT/data/bpe-codes.tgt
-
-    $ONMT/tools/apply_bpe.py -c $OUT/data/bpe-codes.tgt <  $TRAIN_TGT > $OUT/data/train.tgt
-    $ONMT/tools/apply_bpe.py -c $OUT/data/bpe-codes.tgt <  $VALID_TGT > $OUT/data/valid.tgt
-    #$ONMT/tools/apply_bpe.py -c $OUT/data/bpe-codes.tgt <  $TEST_TGT > $OUT/data/test.tgt
-    # We dont touch the test References, No BPE on them!
-    cp $TEST_TGT $OUT/data/test.tgt
-else
-    cp $TRAIN_TGT $OUT/data/train.tgt
-    cp $VALID_TGT $OUT/data/valid.tgt
-    cp $TEST_TGT $OUT/data/test.tgt
-fi
-
+cp $TRAIN_SRC $OUT/data/$train_src
+cp $TRAIN_TGT $OUT/data/$train_tgt
+cp $VALID_SRC $OUT/data/$dev_src
+cp $VALID_TGT $OUT/data/$dev_tgt
+cp $TEST_SRC $OUT/data/$test_src
+cp $TEST_TGT $OUT/data/$test_tgt
 
 #: <<EOF
 # change according to your need
@@ -106,11 +83,15 @@ fi
 
 echo "Step 1b: Preprocess"
 python $ONMT/preprocess.py \
-    -train_src $OUT/data/train.src \
-    -train_tgt $OUT/data/train.tgt \
-    -valid_src $OUT/data/valid.src \
-    -valid_tgt $OUT/data/valid.tgt \
-    -save_data $OUT/data/processed
+    -train_src $OUT/data/$train_src \
+    -train_tgt $OUT/data/$train_tgt \
+    -valid_src $OUT/data/$dev_src \
+    -valid_tgt $OUT/data/$dev_tgt \
+    -save_data $OUT/data/processed \
+    -share_vocab \
+    $VOCAB_TAG \
+    -src_seq_length 80 \
+    -tgt_seq_length 80
 
 
 echo "Step 2: Train"
@@ -119,7 +100,7 @@ tgt_word_vec_size=512
 encoder_type="brnn"
 decoder_type="rnn"
 rnn_size=1024
-global_attention="dot"
+attention="dot"
 
 GPUARG="" # default
 GPUARG="0" # mention with which number of gpu you want to run the code
@@ -127,12 +108,13 @@ CMD="nohup python -u $ONMT/train.py \
         -data $OUT/data/processed \
         -save_model $OUT/models/$NAME \
         -gpuid $GPUARG \
+        -batch_size 64 \
         -src_word_vec_size ${src_word_vec_size} \
         -tgt_word_vec_size ${tgt_word_vec_size} \
         -encoder_type ${encoder_type} \
         -decoder_type ${decoder_type} \
         -rnn_size ${rnn_size} \
-        -global_attention ${global_attention} \
+        -global_attention ${attention} \
         -epochs 100  &> $OUT/run.log &"
 
 echo "Training command :: $CMD"
