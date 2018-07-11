@@ -12,9 +12,9 @@
 set -e
 ONMT="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
 # update these variables
-LANG1="ms"
-LANG2="en"
-NAME="luong.dot.$LANG1-$LANG2"
+LANG1="en"
+LANG2="ms"
+NAME="luong.dot.$LANG1-$LANG2.eight_layers"
 OUT="$ONMT/onmt-runs/$NAME"
 DATA="../../dataset-gen/all_dataset/alt_amara_GNOME_KDE4_OpenSubtitles2016_OpenSubtitles2018_Ubuntu"
 train_src="train.en-ms.tok.clean.$LANG1"
@@ -32,7 +32,7 @@ TEST_TGT="$DATA/$test_tgt"
 VOCAB="" # make it empty if you want to create vocab by Open-NMT-py
 VOCAB_TAG=" -src_vocab_size 60000 -tgt_vocab_size 60000 "
 GPUARG="" # default
-GPUARG="1"
+GPUARG="0"
 
 
 #====== EXPERIMENT BEGIN ======
@@ -108,6 +108,7 @@ CMD="nohup python -u $ONMT/train.py \
         -data $OUT/data/processed \
         -save_model $OUT/models/$NAME \
         -gpuid $GPUARG \
+	-layers 8 \
         -batch_size 64 \
         -src_word_vec_size ${src_word_vec_size} \
         -tgt_word_vec_size ${tgt_word_vec_size} \

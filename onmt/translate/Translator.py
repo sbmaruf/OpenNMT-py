@@ -427,7 +427,7 @@ class Translator(object):
         import subprocess
         path = os.path.dirname(
                         os.path.dirname(
-                            os.path.split(os.path.realpath(__file__))[0]
+                                os.path.split(os.path.realpath(__file__))[0]
                         )
                 )
         try:

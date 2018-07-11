@@ -521,3 +521,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+    path = os.path.dirname(os.path.realpath(__file__))
+    os.system("python {0}/tools/setup.py -gpu_id {1}".format(path, opt.gpuid))
